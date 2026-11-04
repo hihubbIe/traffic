@@ -5,9 +5,9 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import date
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from . import dir_matching, http, recorder
 from .config import CORS_ORIGINS, RECORD, STATIC_DIR, tomtom_key
@@ -39,6 +39,21 @@ async def _guard(coro):
         raise HTTPException(503, str(e))
     except FeedError as e:
         raise HTTPException(502, str(e))
+
+
+@app.get("/", include_in_schema=False)
+async def root(request: Request):
+    # This server is only the API; point people to the app.
+    host = request.url.hostname
+    return HTMLResponse(
+        f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+        <title>Commute API</title>
+        <body style="background:#05070b;color:#e9eef6;font:16px system-ui;padding:40px;line-height:1.6">
+        <h2 style="margin-top:0">Commute API is running</h2>
+        <p>This is the backend. Open the app:</p>
+        <ul><li><a style="color:#45d8ff" href="http://{host}:4173">http://{host}:4173</a> (frontend/run.ps1)</li>
+        <li><a style="color:#45d8ff" href="http://{host}:5173">http://{host}:5173</a> (dev server)</li></ul>
+        <p style="color:#6c778a">API docs: <a style="color:#a6b0c0" href="/docs">/docs</a></p></body>""")
 
 
 @app.get("/api/status")
