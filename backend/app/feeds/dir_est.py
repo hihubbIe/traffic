@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from ..dir_matching import load_assignments, load_count_stations, station_key
-from ..http import cached, get_bytes
+from ..http import cached, get_bytes, get_if_changed
 
 QTV_URL = "http://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR/QTV-DIR/qtvDir.xml"
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
@@ -68,3 +68,8 @@ async def stations() -> dict:
     _resolve(data)
     data.sort(key=lambda s: (s["label"] is None, s["id"]))
     return {"fetched": datetime.now(timezone.utc).isoformat(), "stations": data}
+
+
+async def qtv_if_changed() -> bytes | None:
+    """The national file (~1.3 MB) only when it changed since our last download."""
+    return await get_if_changed(QTV_URL)

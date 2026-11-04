@@ -4,18 +4,21 @@ The key stays server-side; the frontend only talks to this backend.
 Request budget matters on the free tier, so everything is cached.
 """
 import asyncio
+import contextvars
 import json
 import math
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from .. import budget
 from ..config import BBOX, STATIC_DIR, tomtom_key
-from ..http import FeedError, cached, client
+from ..http import FeedError, cached, client, polite_get
 
 TZ = ZoneInfo("Europe/Luxembourg")
 FLOW_TILE_URL = "https://api.tomtom.com/traffic/map/4/tile/flow/{style}/{z}/{x}/{y}.png"
 INCIDENTS_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
 ROUTE_URL = "https://api.tomtom.com/routing/1/calculateRoute/{locs}/json"
+SEGMENT_URL = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
 
 ICON_CATEGORY = {
     0: "Unknown", 1: "Accident", 2: "Fog", 3: "Dangerous conditions", 4: "Rain", 5: "Ice",
@@ -35,32 +38,21 @@ def _key() -> str:
     return k
 
 
-# Free tier enforces a per-second request limit per API. Serialise non-tile calls
-# with a small gap, and retry with backoff on 429.
-_gate = asyncio.Lock()
-_MIN_GAP_S = 0.25
-_last_call = 0.0
+# Set by the collector so its requests stop earlier and leave budget for the app.
+BACKGROUND: contextvars.ContextVar[bool] = contextvars.ContextVar("tomtom_background", default=False)
 
 
-async def _get(url: str, params: dict) -> dict | bytes:
-    global _last_call
+async def _get(url: str, params: dict, api: str) -> dict | bytes:
+    """One TomTom call: counted against the daily budget, spaced per host, retried on 429."""
     params = {**params, "key": _key()}
-    is_tile = "/tile/" in url
-    for attempt in range(4):
-        try:
-            if is_tile:
-                r = await client().get(url, params=params)
-            else:
-                async with _gate:
-                    wait = _last_call + _MIN_GAP_S - asyncio.get_running_loop().time()
-                    if wait > 0:
-                        await asyncio.sleep(wait)
-                    r = await client().get(url, params=params)
-                    _last_call = asyncio.get_running_loop().time()
-        except Exception as e:  # network errors
-            raise FeedError(f"TomTom: {e}") from e
-        if r.status_code == 429 and attempt < 3:
-            await asyncio.sleep(0.6 * (attempt + 1))
+    try:
+        budget.consume(api, background=BACKGROUND.get())
+    except budget.BudgetExceeded as e:
+        raise FeedError(str(e)) from e
+    for attempt in range(3):
+        r = await (client().get(url, params=params) if api == "tiles" else polite_get(url, params=params))
+        if r.status_code == 429 and attempt < 2:
+            await asyncio.sleep(2.0 * (attempt + 1))
             continue
         break
     if r.status_code != 200:
@@ -71,7 +63,7 @@ async def _get(url: str, params: dict) -> dict | bytes:
 
 async def flow_tile(z: int, x: int, y: int, style: str = "relative0") -> bytes:
     async def produce():
-        return await _get(FLOW_TILE_URL.format(style=style, z=z, x=x, y=y), {"tileSize": 256})
+        return await _get(FLOW_TILE_URL.format(style=style, z=z, x=x, y=y), {"tileSize": 256}, "tiles")
     return await cached(f"tt_tile:{style}:{z}:{x}:{y}", 120, produce)
 
 
@@ -83,7 +75,7 @@ async def incidents() -> dict:
         data = await _get(INCIDENTS_URL, {
             "bbox": ",".join(str(v) for v in BBOX), "fields": fields,
             "language": "en-GB", "timeValidityFilter": "present",
-        })
+        }, "incidents")
         feats = []
         for inc in data.get("incidents", []):
             p = inc.get("properties", {})
@@ -146,7 +138,7 @@ async def _route(locs: list[list[float]], depart: str = "now") -> dict:
         "traffic": "true", "travelMode": "car", "routeType": "fastest",
         "computeTravelTimeFor": "all", "departAt": depart, "routeRepresentation": "polyline",
         "sectionType": "traffic",
-    })
+    }, "routing")
     route = data["routes"][0]
     s = route["summary"]
     points = [[p["longitude"], p["latitude"]] for leg in route["legs"] for p in leg["points"]]
@@ -236,3 +228,12 @@ async def departure_curve(corridor_id: str, direction: str, day: date,
 
     points = await asyncio.gather(*(guarded(s) for s in slots))
     return {"corridor": corridor_id, "direction": direction, "day": day.isoformat(), "points": points}
+
+
+async def segment_flow(lon: float, lat: float) -> dict:
+    """Current and free-flow speed on the road segment nearest to a point."""
+    data = await _get(SEGMENT_URL, {"point": f"{lat},{lon}", "unit": "KMPH"}, "flow_segment")
+    f = data["flowSegmentData"]
+    return {"speed": f.get("currentSpeed"), "free_speed": f.get("freeFlowSpeed"),
+            "travel_s": f.get("currentTravelTime"), "free_travel_s": f.get("freeFlowTravelTime"),
+            "confidence": f.get("confidence"), "closed": int(bool(f.get("roadClosure"))), "frc": f.get("frc")}

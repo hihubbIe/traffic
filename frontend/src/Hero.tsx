@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { clock, CorridorConfig, CorridorResult, Direction, mins } from "./api";
 import LeaveTimeline from "./LeaveTimeline";
+import TripButton from "./TripButton";
 
 export interface Alert {
   id: string;
@@ -113,6 +114,7 @@ export default function Hero(p: Props) {
 
         <footer className="hero-foot">
           <span className="live-dot" /> {p.updated ? `Updated ${clock(p.updated)}` : "Connecting…"}
+          <TripButton direction={p.direction} route={p.selected} />
         </footer>
       </div>
     </section>

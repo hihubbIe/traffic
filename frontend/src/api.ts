@@ -94,13 +94,21 @@ export interface CurvePoint {
   delay_s?: number; past?: boolean; error?: string;
 }
 
-export interface RecordingTable { rows: number; first: string | null; last: string | null }
+export interface JobHealth {
+  last_run: number | null; last_ok: number | null; last_error: string | null;
+  runs_24h: number; failures_24h: number; rows_24h: number;
+}
 
 export interface Status {
   tomtom_key: boolean;
-  recording: boolean;
-  recordings: { size_mb?: number } & Partial<Record<"cita_obs" | "dir_obs" | "corridor_obs" | "events_seen", RecordingTable>>;
+  collector_in_api: boolean;
+  collector: { active_hours: string; collecting_now: boolean; jobs: Record<string, JobHealth> };
+  tomtom_budget: { day: string; used: number; budget: number; reserve_for_app: number };
+  db_mb: number;
+  disk_free_gb: number;
 }
+
+export interface Trip { id: number; direction: Direction | null; route: string | null; depart_ts: number; arrive_ts: number | null }
 
 export const mins = (s: number | null | undefined) => (s == null ? "–" : String(Math.round(s / 60)));
 

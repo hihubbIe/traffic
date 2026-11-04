@@ -2,50 +2,64 @@
 
 Personal traffic app for the Thionville – Belval commute. Background research: [docs/00-investigation.md](docs/00-investigation.md).
 
-Two independent parts:
+Three pieces:
 
-| Part | What | Runs on |
+| Piece | Command (from `backend/`) | What |
 |---|---|---|
-| `backend/` | Python API: reads CITA, DIR Est and TomTom, computes routes, records history | this PC now, Raspberry Pi later |
-| `frontend/` | Static web app (React + MapLibre) that calls the API | any static host; open it on PC or phone |
+| API | `python -m uvicorn app.main:app --host 0.0.0.0 --port 8000` | Live data for the app, trip log, health. Also serves the built app at `/` if `frontend/dist` exists. |
+| Collector | `python -m app.collector` | Records every source into `backend/data/recordings/commute.sqlite`, 06:00–21:00 only. |
+| Frontend | `npm run build` in `frontend/` | Static app (React + MapLibre); the API serves it, or any static host. |
+
+On a single PC the collector runs inside the API (`COLLECT_IN_API=true`, the default): `backend/run.ps1`.
+On an always-on machine, run the API and the collector as two services with `COLLECT_IN_API=false`, so either can
+restart without stopping the other. Both share the SQLite file (WAL mode).
 
 ## Run on this PC
 
 ```powershell
-backend/run.ps1      # API on http://<pc>:8000 (first run creates the venv)
-frontend/run.ps1     # app on http://<pc>:4173 (builds, then serves)
+backend/run.ps1      # API + collector on http://<pc>:8000 (first run creates the venv)
+frontend/run.ps1     # optional dev/preview server on :4173; `npm run build` alone is enough for :8000
 ```
 
-Put your TomTom key in `backend/.env` (`TOMTOM_API_KEY=...`, see `backend/.env.example`).
+Put your TomTom key in `backend/.env` (see `backend/.env.example`) and your Home/Work in
+`backend/data/static/places.json` (from `places.example.json`).
 
-**Phone:** on the same Wi-Fi, open `http://<pc-ip>:4173`. The app calls the API on the same host, port 8000.
-Windows may ask to allow Python/Node through the firewall the first time.
+**Phone:** on the same Wi-Fi, open `http://<backend-ip>:8000`.
 
-## Move the backend to the Raspberry Pi
+## Deploying the backend on an always-on machine
 
-1. Copy the `backend/` folder (including `.env` and `data/`) to the Pi.
-2. On the Pi: `./run.sh` (creates the venv on first run, serves on port 8000).
-3. In the app: Details > Settings > Backend URL = `http://<pi-ip>:8000`. Or build the frontend with
-   `VITE_API_URL=http://<pi-ip>:8000` (see `frontend/.env.example`).
+What it needs to be copied/created there (none of it is in git):
+- `backend/.env` (TomTom key, `COLLECT_IN_API=false`, `TOMTOM_DAILY_BUDGET` set to your plan's daily allowance)
+- `backend/data/static/places.json`
+- Python 3.11+ with `pip install -r backend/requirements.txt`; Node 18+ only to build `frontend/dist`
+- Two always-restarting services: the API and the collector (commands above), working directory `backend/`
 
-To keep it running on the Pi, a systemd unit like:
+Health: `GET /api/status` (each collector job's last success, rows and failures in the last 24 h, TomTom requests
+used today, database size, free disk). The same is in the app under Details > Data.
 
-```ini
-[Unit]
-Description=commute backend
-After=network-online.target
+## What the collector records
 
-[Service]
-WorkingDirectory=/home/pi/commute/backend
-ExecStart=/home/pi/commute/backend/run.sh
-Restart=always
-User=pi
+Only 06:00–21:00 local time. "Peak" = weekdays 06:00–09:30 and 15:30–19:30.
 
-[Install]
-WantedBy=multi-user.target
-```
+| Source | Data | Every (peak / other) | Why that pace |
+|---|---|---|---|
+| CITA | LU motorway loops: speed, flow, occupancy (229 sensors) | 3 / 5 min | 1-min feed; queues form over minutes |
+| DIR Est | FR A31/A30 stations: speed, flow | 6 min, downloaded only when changed | publishes every 6 min |
+| CITA | LU roadworks / events | 10 / 15 min | |
+| CITA | travel-time signs | 10 / 30 min | |
+| DIR (tipi) | FR national-road events in the area | 60 min, 2 s between files, each file once | listing keeps 24 h |
+| SNCF GTFS-RT | late / cancelled trains via Thionville–Luxembourg, alerts | 5 / 15 min | realtime, can't be recovered later |
+| Open-Meteo | hourly weather at 3 points | once a day (covers 48 h) | archive available on request |
+| TomTom | door-to-door times, 3 routes × 2 directions, with slowdown sections | 10 / 30 min | the model's target |
+| TomTom | speed on 20 key segments (`segments.json`) | 10 / 30 min | where the time is lost |
+| TomTom | incidents in the area | 15 / 30 min | |
 
-While the backend runs it records snapshots to `backend/data/recordings/traffic.sqlite` (`RECORD=false` disables).
+TomTom: ≈1,600 requests on a weekday, ≈800 on a weekend day. Every TomTom call (collector and app) is
+counted in the database against `TOMTOM_DAILY_BUDGET`; the collector stops at budget − `TOMTOM_APP_RESERVE`.
+Requests to one host are spaced (≥1 s, 0.25 s for TomTom, 2 s for tipi); a failing source backs off ×2 per
+failure up to 2 h. After a restart, jobs resume where they were (no duplicate daily calls).
+
+Storage: ≈3 MB per weekday, ≈1 GB per year.
 
 ## The app
 
@@ -60,6 +74,8 @@ While the backend runs it records snapshots to `backend/data/recordings/traffic.
 ## Hand-maintained data (`backend/data/static/`)
 
 - `places.json`: your Home and Work (gitignored, private). Create it from `places.example.json`; copy it to the Pi with the backend.
+- `segments.json`: generated by `backend/tools/build_segments.py`. TomTom flow sampling points on the routes.
+  Ids key the recorded history, keep them stable.
 - `corridors.json`: the routes. The A30 route uses a waypoint per direction, on the
   correct carriageway (OSM PR milestones), so TomTom doesn't make a U-turn.
 - `choke_points.json`: bottleneck inventory (`approx: true` = position still to check).

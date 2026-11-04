@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backend API (Linux / Raspberry Pi). Listens on all interfaces, port $PORT (default 8000).
+# Backend API (Linux). Listens on all interfaces, port $PORT (default 8000).
 set -e
 cd "$(dirname "$0")"
 if [ ! -d .venv ]; then

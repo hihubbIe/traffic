@@ -34,7 +34,12 @@ export default function Drawer(p: Props) {
   const [tab, setTab] = useState<Tab>("layers");
   const [url, setUrl] = useState(apiBase());
   const hasKey = !!p.status.data?.tomtom_key;
-  const rec = p.status.data?.recordings;
+  const st = p.status.data;
+  const ago = (ts: number | null) => {
+    if (!ts) return "never";
+    const m = Math.round((Date.now() / 1000 - ts) / 60);
+    return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  };
 
   return (
     <>
@@ -70,12 +75,20 @@ export default function Drawer(p: Props) {
             <>
               <div className="kv"><span>Backend</span><b>{apiBase()}</b></div>
               <div className="kv"><span>TomTom key</span><b className={hasKey ? "good" : "bad"}>{hasKey ? "Loaded" : "Missing"}</b></div>
-              <div className="kv"><span>Recording</span><b>{p.status.data?.recording ? "On" : "Off"}{rec?.size_mb != null ? ` · ${rec.size_mb} MB` : ""}</b></div>
-              {rec && (
-                <div className="kv"><span>Rows</span>
-                  <b>LU {rec.cita_obs?.rows ?? 0} · FR {rec.dir_obs?.rows ?? 0} · routes {rec.corridor_obs?.rows ?? 0} · events {rec.events_seen?.rows ?? 0}</b></div>
+              {st && (
+                <>
+                  <div className="kv"><span>TomTom today</span><b>{st.tomtom_budget.used} / {st.tomtom_budget.budget} requests</b></div>
+                  <div className="kv"><span>Database</span><b>{st.db_mb} MB · {st.disk_free_gb} GB free</b></div>
+                  <h3>Collector · {st.collector.active_hours}{st.collector.collecting_now ? "" : " · paused"}</h3>
+                  {Object.entries(st.collector.jobs).map(([job, h]) => (
+                    <div key={job} className="kv" title={h.last_error ?? ""}>
+                      <span><i className={`dot ${h.last_error ? "bad" : h.last_ok ? "good" : ""}`} />{job.replace("_", " ")}</span>
+                      <b>{ago(h.last_ok)} · {h.rows_24h} rows/24h{h.failures_24h ? ` · ${h.failures_24h} fails` : ""}</b>
+                    </div>
+                  ))}
+                </>
               )}
-              <h3>Feeds</h3>
+              <h3>App feeds</h3>
               {p.feeds.map((f) => (
                 <div key={f.name} className="kv">
                   <span><i className={`dot ${f.poll.error ? "bad" : f.poll.at ? "good" : ""}`} />{f.name}</span>

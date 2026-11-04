@@ -20,11 +20,19 @@ def tomtom_key() -> str:
     return os.getenv("TOMTOM_API_KEY", "").strip()
 
 
-RECORD = _flag("RECORD", True)
+# Run the collector inside the API process (handy on a PC). On the Pi it runs as its own service.
+COLLECT_IN_API = _flag("COLLECT_IN_API", True)
+
+# TomTom requests per day (non-tile). Check your plan's free tier on the TomTom dashboard.
+TOMTOM_DAILY_BUDGET = int(os.getenv("TOMTOM_DAILY_BUDGET", "2300"))
+# Part of the budget the collector leaves for the app itself.
+TOMTOM_APP_RESERVE = int(os.getenv("TOMTOM_APP_RESERVE", "300"))
+
+# Built frontend served at "/" when present, so a phone only needs the backend's address.
+FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST", BACKEND_DIR.parent / "frontend" / "dist"))
 
 # Origins allowed to call the API from a browser ("*" = any, fine on a home network).
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
-RECORD_TOMTOM = _flag("RECORD_TOMTOM", True)
 
 # Study area (lon/lat): Thionville to north of Luxembourg City.
 BBOX = (5.80, 49.28, 6.40, 49.66)

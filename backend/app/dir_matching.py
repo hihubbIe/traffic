@@ -12,9 +12,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from .config import RECORDINGS_DIR, STATIC_DIR
-
-DB_PATH = RECORDINGS_DIR / "traffic.sqlite"  # same file as recorder.DB_PATH (not imported: cycle)
+from .config import STATIC_DIR
+from .db import DB_PATH
 
 TZ = ZoneInfo("Europe/Luxembourg")
 DAY_START, DAY_END = 5, 21  # local hours used for the daily volume
@@ -47,13 +46,14 @@ def weekday_volumes() -> tuple[dict, list[str]]:
         return {}, []
     con = sqlite3.connect(DB_PATH)
     try:
-        rows = con.execute("SELECT ts, site, flow FROM dir_obs WHERE flow IS NOT NULL").fetchall()
+        rows = con.execute("SELECT o.ts, s.ext_id, o.flow FROM obs_sensor o JOIN sites s ON s.id = o.site "
+                           "WHERE s.source = 'DIR' AND o.flow IS NOT NULL").fetchall()
     finally:
         con.close()
     slots_needed = (DAY_END - DAY_START) * 60 // SLOT_MIN
     per = defaultdict(dict)  # (site, date) -> {slot: flow}
     for ts, site, flow in rows:
-        t = datetime.fromisoformat(ts).astimezone(TZ)
+        t = datetime.fromtimestamp(ts, TZ)
         if t.weekday() >= 5 or not (DAY_START <= t.hour < DAY_END):
             continue
         slot = ((t.hour - DAY_START) * 60 + t.minute) // SLOT_MIN
