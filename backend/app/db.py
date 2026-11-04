@@ -60,6 +60,11 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE TABLE IF NOT EXISTS trips (
   id INTEGER PRIMARY KEY, direction TEXT, route TEXT, depart_ts INTEGER, arrive_ts INTEGER, note TEXT);
 
+-- Every forecast shown or probed, to score it later against what actually happened.
+CREATE TABLE IF NOT EXISTS predictions (
+  source TEXT NOT NULL, route TEXT NOT NULL, direction TEXT NOT NULL, depart_ts INTEGER NOT NULL,
+  made_ts INTEGER NOT NULL, predicted_s REAL, PRIMARY KEY (source, route, direction, depart_ts, made_ts)) WITHOUT ROWID;
+
 -- Collector health and TomTom request budget.
 CREATE TABLE IF NOT EXISTS collector_runs (
   ts INTEGER NOT NULL, job TEXT NOT NULL, ok INTEGER, rows INTEGER, ms INTEGER, error TEXT);

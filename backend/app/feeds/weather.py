@@ -3,7 +3,7 @@
 Open-Meteo returns past hours on request (past_days), so one call a day covering the
 last two days is enough; overlapping hours simply overwrite.
 """
-from ..http import FeedError, polite_get
+from ..http import FeedError, cached, polite_get
 
 URL = "https://api.open-meteo.com/v1/forecast"
 PLACES = {  # rough points, not addresses
@@ -36,3 +36,18 @@ async def hourly_past(days: int = 2) -> list[dict]:
                         "rain": h["rain"][i], "snowfall": h["snowfall"][i], "code": h["weather_code"][i],
                         "wind": h["wind_speed_10m"][i], "visibility": h["visibility"][i], "cloud": h["cloud_cover"][i]})
     return out
+
+
+async def forecast(place: str = "aumetz") -> list[dict]:
+    """Hourly forecast (next 4 days, covers the next workday) at one place; cached 1 h, only fetched when the app asks."""
+    async def produce():
+        lon, lat = PLACES[place]
+        r = await polite_get(URL, params={"latitude": lat, "longitude": lon, "hourly": ",".join(HOURLY),
+                                          "forecast_days": 4, "timeformat": "unixtime", "timezone": "UTC"})
+        if r.status_code != 200:
+            raise FeedError(f"Open-Meteo HTTP {r.status_code}")
+        h = r.json()["hourly"]
+        return [{"ts": int(t), "precip": h["precipitation"][i], "snowfall": h["snowfall"][i],
+                 "code": h["weather_code"][i], "visibility": h["visibility"][i], "temp": h["temperature_2m"][i]}
+                for i, t in enumerate(h["time"])]
+    return await cached(f"wx_fc:{place}", 3600, produce)

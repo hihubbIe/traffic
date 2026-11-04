@@ -119,3 +119,28 @@ export const isoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+export type PlanMode = "next" | "workday";
+
+export interface Factor {
+  effect: "lighter" | "heavier" | "mixed"; strength: number; title: string; detail: string; kind: string;
+}
+
+export interface PlanOption { label: string; depart: string; arrive: string; minutes: number; route: string }
+
+export interface Plan {
+  direction: Direction;
+  window: { mode: PlanMode; day: string; start: string; end: string; label: string };
+  routes: Record<string, { name: string; points: { depart: string; travel_s: number; free_s?: number; arrive: string }[] }>;
+  slots: { depart: string; best_route: string; best_s: number; by_route: Record<string, number>; low_s?: number; high_s?: number }[];
+  recommendation: { headline: string; detail: string | null; options: PlanOption[]; best?: PlanOption; threshold_s?: number };
+  route_notes: string[];
+  band_basis: string | null;
+  factors: Factor[];
+  live: null | {
+    as_of: number; trend: "building" | "clearing" | "steady" | "unknown"; route_change_min: number | null;
+    slowest: { name: string; speed: number; free_speed: number; ratio: number; speed_change: number | null }[];
+  };
+  forecast_source: string;
+  accuracy: { scored: number; groups: { source: string; horizon: string; n: number; mae_s: number; bias_s: number }[] };
+}

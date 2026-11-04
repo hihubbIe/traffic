@@ -13,11 +13,11 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import db
+from . import db, scoring
 from .config import STATIC_DIR, tomtom_key
 from .feeds import cita, dir_est, dir_events, rail, tomtom, weather
 from .http import FeedError
@@ -217,6 +217,40 @@ async def job_weather(con) -> int:
     return n
 
 
+def _next_workday(d):
+    d = d + timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+async def job_forecast_probe(con) -> int:
+    """Weekdays: forecast the evening (asked ~14:00) and the next morning (asked ~20:00) for the
+    usual routes, so forecasts made hours ahead get scored even when nobody opens the app."""
+    now = datetime.now(TZ)
+    if now.weekday() >= 5:
+        return 0
+    hm = now.hour * 60 + now.minute
+    plans = []
+    if 14 * 60 <= hm < 16 * 60:
+        plans.append(("to_home", now.date(), "16:00", "19:30"))
+    if 19 * 60 + 30 <= hm < 21 * 60:
+        plans.append(("to_work", _next_workday(now.date()), "06:00", "09:30"))
+    usual = [c["id"] for c in tomtom.load_corridors()["corridors"] if c.get("group") == "usual"]
+    n = 0
+    for direction, day, start, end in plans:
+        marker = f"{direction}:{day.isoformat()}"
+        if con.execute("SELECT 1 FROM seen_files WHERE source='PROBE' AND name=?", (marker,)).fetchone():
+            continue
+        for rid in usual:
+            curve = await tomtom.departure_curve(rid, direction, day, start, end)
+            scoring.log("tomtom", rid, direction, curve["points"])
+            n += sum(1 for p in curve["points"] if p.get("travel_s"))
+        with db.tx(con):
+            con.execute("INSERT OR IGNORE INTO seen_files VALUES ('PROBE', ?, ?)", (marker, db.now()))
+    return n
+
+
 DAILY = 24 * 60
 JOBS = [
     #   name                function               minutes between runs                TomTom
@@ -230,6 +264,7 @@ JOBS = [
     Job("tomtom_routes",    job_tomtom_routes,     {"peak": 10, "day": 30}, needs_tomtom=True),
     Job("tomtom_segments",  job_tomtom_segments,   {"peak": 10, "day": 30}, needs_tomtom=True),
     Job("tomtom_incidents", job_tomtom_incidents,  {"peak": 15, "day": 30}, needs_tomtom=True),
+    Job("forecast_probe",   job_forecast_probe,    {"peak": 30, "day": 30}, needs_tomtom=True),
 ]
 
 

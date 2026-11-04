@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import budget, collector, db, dir_matching, http
+from . import budget, calendar_ctx, collector, db, dir_matching, http, plan, scoring
 from .config import COLLECT_IN_API, CORS_ORIGINS, DATA_DIR, FRONTEND_DIST, STATIC_DIR, tomtom_key
 from .feeds import cita, dir_est, tomtom
 from .http import FeedError
@@ -167,7 +167,25 @@ async def corridors_now(direction: str = Query("to_work", pattern=DIRECTION)):
 @app.get("/api/corridors/{corridor_id}/curve")
 async def corridor_curve(corridor_id: str, direction: str = Query("to_work", pattern=DIRECTION),
                          day: date | None = None, start: str = "06:00", end: str = "09:30"):
-    return await _guard(tomtom.departure_curve(corridor_id, direction, day or date.today(), start, end))
+    curve = await _guard(tomtom.departure_curve(corridor_id, direction, day or date.today(), start, end))
+    scoring.log("tomtom", corridor_id, direction, curve["points"])
+    return curve
+
+
+@app.get("/api/plan")
+async def plan_view(direction: str = Query("to_home", pattern=DIRECTION), mode: str = Query("next", pattern="^(next|workday)$")):
+    """When to leave, on which route, how sure, and why."""
+    return await _guard(plan.build(direction, mode))
+
+
+@app.get("/api/accuracy")
+async def accuracy(days: int = 28):
+    return scoring.accuracy(days)
+
+
+@app.get("/api/calendar/{day}")
+async def calendar_day(day: date):
+    return await _guard(calendar_ctx.day_context(day))
 
 
 @app.get("/api/static/{name}")

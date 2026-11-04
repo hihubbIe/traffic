@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { clock, CorridorConfig, CorridorResult, Direction, mins } from "./api";
-import LeaveTimeline from "./LeaveTimeline";
+import { clock, CorridorConfig, CorridorResult, Direction, mins, Plan, PlanMode } from "./api";
+import PlanPanel from "./PlanPanel";
 import TripButton from "./TripButton";
 
 export interface Alert {
@@ -22,6 +22,10 @@ interface Props {
   error: string | null;
   hasKey: boolean | null;
   onOpenDetails: () => void;
+  plan: Plan | null;
+  planError: string | null;
+  mode: PlanMode;
+  setMode: (m: PlanMode) => void;
 }
 
 function deltaInfo(r?: CorridorResult) {
@@ -30,6 +34,14 @@ function deltaInfo(r?: CorridorResult) {
   if (d >= 3) return { text: `+${d} min vs usual`, cls: "bad" };
   if (d <= -3) return { text: `${-d} min faster than usual`, cls: "good" };
   return { text: "Usual traffic", cls: "ok" };
+}
+
+function workdayLabel(direction: Direction) {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  const day = d.toLocaleDateString("en-GB", { weekday: "short" });
+  return `${day} ${direction === "to_work" ? "AM" : "PM"}`;
 }
 
 export default function Hero(p: Props) {
@@ -41,10 +53,9 @@ export default function Hero(p: Props) {
   const to = p.direction === "to_work" ? "Work" : "Home";
   const valid = p.routes.filter((x) => x.travel_s);
   const maxT = Math.max(1, ...valid.map((x) => x.travel_s!));
+  const fastestUsual = valid.filter((x) => names[x.id]?.group === "usual").sort((a, b) => a.travel_s! - b.travel_s!)[0];
   const ref = valid.find((x) => names[x.id]?.group === "reference");
   const gain = r?.travel_s && ref?.travel_s ? Math.round((r.travel_s - ref.travel_s) / 60) : 0;
-  const shortcut = gain >= 5 ? gain : 0;
-  const fastestUsual = valid.filter((x) => names[x.id]?.group === "usual").sort((a, b) => a.travel_s! - b.travel_s!)[0];
 
   return (
     <section className={`hero glass ${expanded ? "expanded" : ""}`}>
@@ -70,31 +81,25 @@ export default function Hero(p: Props) {
             {r?.travel_s ? mins(r.travel_s) : "––"}<span>min</span>
           </div>
           <div className="hero-meta">
-            <div className="via">via <b>{names[p.selected]?.name ?? "…"}</b></div>
-            {r?.travel_s && <div className="muted">Leave now · arrive {clock(new Date(Date.now() + r.travel_s * 1000))}</div>}
+            <div className="via">now via <b>{names[p.selected]?.name ?? "…"}</b></div>
+            {r?.travel_s && <div className="muted">arrive {clock(new Date(Date.now() + r.travel_s * 1000))}</div>}
             {delta && <div className={`delta ${delta.cls}`}><i />{delta.text}</div>}
-            {shortcut > 0 && <div className="hint">Motorway {shortcut} min faster right now</div>}
+            {gain >= 5 && <div className="hint">Motorway {gain} min faster right now</div>}
           </div>
         </div>
       )}
 
       <button className="peek" onClick={() => setExpanded(true)}>
-        {p.alerts.length > 0
-          ? <><i style={{ background: p.alerts[0].color }} />{p.alerts.length} alert{p.alerts.length > 1 ? "s" : ""} on this route</>
-          : <>Routes & when to leave</>}
-        <span>›</span>
+        <span className="peek-text">{p.plan?.recommendation.headline ?? (p.alerts.length ? `${p.alerts.length} alerts on this route` : "When to leave")}</span>
+        <span className="chev">›</span>
       </button>
 
       <div className="hero-more">
-        {p.alerts.length > 0 && (
-          <ul className="alerts">
-            {p.alerts.slice(0, 3).map((a) => (
-              <li key={a.id}><i style={{ background: a.color }} /><b>{a.title}</b><span>{a.where}</span></li>
-            ))}
-          </ul>
-        )}
+        <PlanPanel plan={p.plan} error={p.planError} mode={p.mode} setMode={p.setMode}
+                   workdayLabel={workdayLabel(p.direction)} alerts={p.alerts} />
 
         <div className="routes">
+          <span className="eyebrow">Right now</span>
           {p.cfg?.corridors.map((c) => {
             const x = p.routes.find((y) => y.id === c.id);
             const pct = x?.travel_s ? (x.travel_s / maxT) * 100 : 0;
@@ -109,8 +114,6 @@ export default function Hero(p: Props) {
             );
           })}
         </div>
-
-        <LeaveTimeline corridor={p.selected} direction={p.direction} enabled={p.hasKey === true && !!p.selected} />
 
         <footer className="hero-foot">
           <span className="live-dot" /> {p.updated ? `Updated ${clock(p.updated)}` : "Connecting…"}

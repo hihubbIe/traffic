@@ -141,8 +141,11 @@ def parse_events(xml: bytes) -> list[dict]:
 
 async def events() -> dict:
     async def produce():
-        return {"type": "FeatureCollection", "fetched": _now(),
-                "features": parse_events(await get_bytes(EVENTS_URL))}
+        try:
+            features = parse_events(await get_bytes(EVENTS_URL))
+        except ET.ParseError as e:  # CITA occasionally serves an empty body
+            raise FeedError(f"CITA events: unreadable response ({e})") from e
+        return {"type": "FeatureCollection", "fetched": _now(), "features": features}
     return await cached("cita_events", 120, produce)
 
 

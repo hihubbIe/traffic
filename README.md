@@ -53,8 +53,12 @@ Only 06:00–21:00 local time. "Peak" = weekdays 06:00–09:30 and 15:30–19:30
 | TomTom | door-to-door times, 3 routes × 2 directions, with slowdown sections | 10 / 30 min | the model's target |
 | TomTom | speed on 20 key segments (`segments.json`) | 10 / 30 min | where the time is lost |
 | TomTom | incidents in the area | 15 / 30 min | |
+| TomTom | forecast probe: evening asked ~14:00, next morning asked ~20:00, both usual routes | twice per weekday | scores forecasts made hours ahead |
 
-TomTom: ≈1,600 requests on a weekday, ≈800 on a weekend day. Every TomTom call (collector and app) is
+Calendar (public and school holidays FR/LU/DE/BE, OpenHolidays API): fetched about once a month into
+`backend/data/recordings/calendar.json`.
+
+TomTom: ≈1,650 requests on a weekday, ≈800 on a weekend day. Every TomTom call (collector and app) is
 counted in the database against `TOMTOM_DAILY_BUDGET`; the collector stops at budget − `TOMTOM_APP_RESERVE`.
 Requests to one host are spaced (≥1 s, 0.25 s for TomTom, 2 s for tipi); a failing source backs off ×2 per
 failure up to 2 h. After a restart, jobs resume where they were (no duplicate daily calls).
@@ -70,6 +74,15 @@ Storage: ≈3 MB per weekday, ≈1 GB per year.
   are faint dashed lines (tap to select). Alert dots show incidents and roadworks within 250 m of your routes.
 - **Details** (settings icon): optional layers (all-road traffic, all incidents, LU sensors, FR count stations,
   choke points, signs, cameras), data-source health, station matching, backend URL.
+
+## How predictions are made and checked
+
+- `GET /api/plan?direction=to_work|to_home&mode=next|workday` — the "when to leave" answer: forecast per departure
+  for the usual routes, recommendation ("leave before X or after Y"), key options with arrival times, the "why" list
+  (calendar, weather forecast, train disruptions, live trend from recorded segments), accuracy so far.
+- Forecasts currently come from TomTom and are labelled as such. Every forecast shown or probed is stored
+  (`predictions`) and scored against what happened (`GET /api/accuracy`): your logged trip first, else the recorded
+  live route time. Once 30+ forecasts are scored for a horizon, the plan shows a likely range.
 
 ## Hand-maintained data (`backend/data/static/`)
 

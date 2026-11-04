@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, CitaSite, CorridorConfig, CorridorResult, Direction, DirStation, MatchStatus, Status } from "./api";
+import { api, CitaSite, CorridorConfig, CorridorResult, Direction, DirStation, MatchStatus, Plan, PlanMode, Status } from "./api";
 import Drawer from "./Drawer";
 import { allCoords, anchor, LngLat, nearLine } from "./geo";
 import Hero, { Alert } from "./Hero";
@@ -35,6 +35,7 @@ export default function App() {
   const [drawer, setDrawer] = useState(false);
   const [visible, setVisible] = useStored("layers.v2", DEFAULT_LAYERS);
   const [flowKey, setFlowKey] = useState(0);
+  const [mode, setMode] = useState<PlanMode>("next");
   const mobile = useIsMobile();
 
   const status = usePoll(() => api<Status>("/api/status"), 60_000);
@@ -45,6 +46,10 @@ export default function App() {
     180_000, [hasKey, direction]);
   const incidents = usePoll(() => (hasKey ? api<FC>("/api/tomtom/incidents") : Promise.resolve(null)), 120_000, [hasKey]);
   const events = usePoll(() => api<FC>("/api/cita/events"), 120_000);
+  const plan = usePoll(
+    () => (hasKey ? api<Plan>(`/api/plan?direction=${direction}&mode=${mode}`) : Promise.resolve(null)),
+    300_000, [hasKey, direction, mode]);
+  const planData = plan.data && plan.data.direction === direction && plan.data.window.mode === mode ? plan.data : null;
 
   // Detail-only data: fetched when its layer or the drawer needs it.
   const sites = usePoll(() => (visible.sensors ? api<{ sites: CitaSite[] }>("/api/cita/traffic") : Promise.resolve(null)), 60_000, [visible.sensors]);
@@ -119,7 +124,8 @@ export default function App() {
       <Hero cfg={cfg.data} direction={direction}
             onToggleDirection={() => { setDirection(direction === "to_work" ? "to_home" : "to_work"); setManual(null); }}
             routes={results} selected={selected} onSelect={setManual} alerts={alertList}
-            updated={routes.at} error={routes.error ?? status.error} hasKey={hasKey} onOpenDetails={() => setDrawer(true)} />
+            updated={routes.at} error={routes.error ?? status.error} hasKey={hasKey} onOpenDetails={() => setDrawer(true)}
+            plan={planData} planError={plan.error} mode={mode} setMode={setMode} />
 
       <Drawer open={drawer} onClose={() => setDrawer(false)} visible={visible} setVisible={setVisible}
               status={status} dir={dir} match={match} cfg={cfg.data}
