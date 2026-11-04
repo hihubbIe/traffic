@@ -1,0 +1,21 @@
+{
+  "_doc": "Copy to places.json (gitignored) and put your own Home and Work. coord = [lon, lat].",
+  "endpoints": {
+    "home": {
+      "name": "Home",
+      "address": "Gare de Thionville, Thionville",
+      "coord": [
+        6.16952,
+        49.35386
+      ]
+    },
+    "work": {
+      "name": "Work",
+      "address": "Belval Plaza, Belval",
+      "coord": [
+        5.9455,
+        49.50168
+      ]
+    }
+  }
+}

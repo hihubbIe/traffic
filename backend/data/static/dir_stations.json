@@ -1,0 +1,6 @@
+{
+ "_doc": "Live DIR Est ids (qtvDir, without the direction digit) -> count station in count_stations.json (key 'ROAD@PR'). Last digit of a live id is the direction: 1 = sens 1 (+, increasing PR, towards Luxembourg on A31), 2 = sens 2. 'source': refDir.csv (official), manual, or auto-match (from recordings, see backend/app/dir_matching.py).",
+ "stations": {
+  "MZO57.5": {"station_key": "A31@290.77", "source": "refDir.csv"}
+ }
+}

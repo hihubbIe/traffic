@@ -1,0 +1,99 @@
+{
+  "_doc": "Routes between Home and Work (Home/Work themselves live in places.json). 'via' = [lon, lat] waypoints forcing TomTom through a route, either one list (Home->Work order, reversed for Work->Home) or {to_work: [...], to_home: [...]} when a motorway waypoint must sit on the carriageway of that direction (OSM PR milestones; the wrong side makes TomTom U-turn). 'markers' report which places a computed route passes.",
+  "corridors": [
+    {
+      "id": "a30",
+      "name": "A30",
+      "group": "usual",
+      "description": "A30 past Havange and Boulange, then north via Audun-le-Tiche",
+      "via": {
+        "to_work": [
+          [
+            5.9517523,
+            49.3952274
+          ],
+          [
+            5.95724,
+            49.47282
+          ]
+        ],
+        "to_home": [
+          [
+            5.95724,
+            49.47282
+          ],
+          [
+            5.9516544,
+            49.395144
+          ]
+        ]
+      }
+    },
+    {
+      "id": "aumetz",
+      "name": "Aumetz",
+      "group": "usual",
+      "description": "Off the A30 at Tressange, through Aumetz, then Audun-le-Tiche",
+      "via": [
+        [
+          5.94254,
+          49.4177
+        ],
+        [
+          5.95724,
+          49.47282
+        ]
+      ]
+    },
+    {
+      "id": "motorway",
+      "name": "Motorway",
+      "group": "reference",
+      "description": "A31 → A3 → A13 → A4, for comparison",
+      "via": {
+        "to_work": [
+          [
+            6.11705,
+            49.43679
+          ]
+        ],
+        "to_home": [
+          [
+            6.11688,
+            49.43681
+          ]
+        ]
+      }
+    }
+  ],
+  "markers": {
+    "Audun-le-Tiche": {
+      "coord": [
+        5.95724,
+        49.47282
+      ],
+      "radius": 1200
+    },
+    "Aumetz": {
+      "coord": [
+        5.94254,
+        49.4177
+      ],
+      "radius": 800
+    },
+    "Croix de Bettembourg": {
+      "coord": [
+        6.11703,
+        49.49685
+      ],
+      "radius": 900
+    },
+    "Micheville": {
+      "coord": [
+        5.965,
+        49.487
+      ],
+      "radius": 700
+    }
+  }
+}
